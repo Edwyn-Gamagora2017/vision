@@ -84,6 +84,7 @@ public class VisionController : MonoBehaviour {
 				bottomHsv = new Hsv( 80,70,70 ); // 0-179, 0-255, 0-255
 				topHsv = new Hsv( 120,250,250 );
 			}
+			//rangeImg.Data[0,0,0];
 			Mat imagBW = rangeImg.InRange( bottomHsv, topHsv ).Mat;
 			int elementSize = 5;
 			Mat structureElement = CvInvoke.GetStructuringElement(ElementShape.Rectangle, new Size(elementSize,elementSize), new Point(-1,-1));
@@ -107,14 +108,16 @@ public class VisionController : MonoBehaviour {
 				}
 			}
 			if( contours.Size > 0 ){
+				VectorOfPoint biggestContour = contours[biggestContourIndex];
+
 				CvInvoke.DrawContours( imageOrig, contours, biggestContourIndex, new MCvScalar( 255,0,0 ), 5 );
 
 				if( previousBiggestContourArea > 0 ){	// Object entering
-					if( biggestContourArea > previousBiggestContourArea*1.2 ){
+					if( biggestContourArea > previousBiggestContourArea*1.6 ){
 						// Going Foward
 						//Debug.Log( "Front" );
 						if(canon) canon.Shoot();
-					}else if(biggestContourArea*1.2 < previousBiggestContourArea){
+					}else if(biggestContourArea*1.6 < previousBiggestContourArea){
 						// Going backward
 						//Debug.Log( "Back" );
 					}
@@ -126,14 +129,22 @@ public class VisionController : MonoBehaviour {
 				int cx = (int)(moment.M10/moment.M00);
 				int cy = (int)(moment.M01/moment.M00);
 
-				VectorOfVectorOfPoint centroid = new VectorOfVectorOfPoint();
-				Point[] points = new Point[1];
-				points[0] = new Point( cx,cy );
-				centroid.Push( new VectorOfPoint() );
-				centroid[0].Push( points );
-				CvInvoke.DrawContours( imageOrig, centroid, 0, new MCvScalar( 0,255,0 ), 5 );
+				imageOrig = drawPoint( imageOrig, cx, cy, 5 );
 
 				if( canon ) canon.setHorizontalPosition( cx/(float)imSize );
+				//*/
+
+				//* Top Point
+				Point top = biggestContour[0];
+				for( int i = 1; i < biggestContour.Size; i++ ){
+					Point p = biggestContour[i];
+					if( top.Y > p.Y ){
+						top = p;
+					}
+				}
+
+				if( canon ) canon.setVerticalPosition( ((float)imageOrig.SizeOfDimemsion[0]-top.Y)/(float)imageOrig.SizeOfDimemsion[0] );
+				imageOrig = drawPoint( imageOrig, top.X, top.Y, 5, 255, 0, 0 );
 				//*/
 			}
 			else{
@@ -166,6 +177,27 @@ public class VisionController : MonoBehaviour {
 		if( Input.GetKeyDown(KeyCode.Escape) ){
 			Application.Quit();
 		}
+	}
+
+	Mat drawPoint( Mat imageRGB, int x, int y, int pointSize, int colorR = 0, int colorG = 255, int colorB = 0 ){
+		Image<Rgb,System.Byte> showInfo = imageRGB.ToImage<Rgb,System.Byte>();
+		for( int i = -pointSize; i < pointSize; i++ ){
+			for( int j = -pointSize; j < pointSize; j++ ){
+				if( x+j >= 0 && x+j < imageRGB.SizeOfDimemsion[1] && y+i >= 0 && y+i < imageRGB.SizeOfDimemsion[0] ){
+					showInfo.Data [ y+i, x+j, 0 ] = (byte)colorB;
+					showInfo.Data [ y+i, x+j, 1 ] = (byte)colorG;
+					showInfo.Data [ y+i, x+j, 2 ] = (byte)colorR;
+				}
+			}
+		}
+		return showInfo.Mat;
+
+		/*VectorOfVectorOfPoint centroid = new VectorOfVectorOfPoint();
+		Point[] points = new Point[1];
+		points[0] = new Point( cx,cy );
+		centroid.Push( new VectorOfPoint() );
+		centroid[0].Push( points );
+		CvInvoke.DrawContours( imageOrig, centroid, 0, new MCvScalar( 0,255,0 ), 5 );*/
 	}
 
     void OnDestroy()

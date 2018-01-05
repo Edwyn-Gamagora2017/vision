@@ -35,6 +35,13 @@ public class CanonController : MonoBehaviour {
 
 	public void setHorizontalPosition( float x ){
 		int xWidth = 8;
-		transform.position = new Vector3( initialPos.x-xWidth/2f+x*xWidth, initialPos.y, initialPos.z );
+		Vector3 lastPos = transform.position;
+		transform.position = new Vector3( initialPos.x-xWidth/2f+x*xWidth, lastPos.y, lastPos.z );
+	}
+	public void setVerticalPosition( float y ){
+		int yWidth = 6;
+		Vector3 lastPos = transform.position;
+		transform.position = new Vector3( lastPos.x, initialPos.y-yWidth/2f+y*yWidth, lastPos.z );
+		//transform.rotation = 
 	}
 }
