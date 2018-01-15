@@ -12,7 +12,7 @@ using System.Drawing;
 public class FaceController : MonoBehaviour {
 
 	[SerializeField]
-	UnityEngine.UI.Image texture;
+	UnityEngine.UI.RawImage texture;
 
 	[SerializeField]
 	FaceAction faceAction;
@@ -163,7 +163,7 @@ public class FaceController : MonoBehaviour {
 			}
 
 			CvInvoke.Imshow(imNameOrig, imageOrig);
-			//if( texture != null ) texture.material.mainTexture = toTexture( imageOrig );
+			if( texture != null ) texture.texture = toTexture( imageOrig );
 
 			// Storing
 			writer.Write(imageOrig);
@@ -190,10 +190,13 @@ public class FaceController : MonoBehaviour {
 
 	Texture2D toTexture( Mat image ){
 		System.IO.MemoryStream stream = new System.IO.MemoryStream();
-		Bitmap bitmap = image.ToImage<Rgb,System.Byte>().ToBitmap( image.Width, image.Height );
-		bitmap.Save( stream, bitmap.RawFormat );
-		Texture2D text = new Texture2D( image.Width, image.Height );
+		image.Bitmap.Save( stream, image.Bitmap.RawFormat ) ;
+		Texture2D text = new Texture2D( image.Bitmap.Width, image.Bitmap.Height );
 		text.LoadImage( stream.ToArray() );
+
+		stream.Close();
+		stream.Dispose();
+
 		return text;
 	}
 
