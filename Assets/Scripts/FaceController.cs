@@ -12,45 +12,58 @@ using System.Drawing;
 public class FaceController : MonoBehaviour {
 
 	[SerializeField]
-	UnityEngine.UI.RawImage texture;
+	UnityEngine.UI.RawImage texture;			// Image used to show the webcam into the Unity scene
 
 	[SerializeField]
-	FaceAction faceAction;
+	FaceAction faceAction;						// Interface to execute actions with unity GameObjects
 
-	VideoCapture webCam;
-	VideoWriter writer;
-	Mat imageOrig;
+	VideoCapture webCam;						// Obtains the images from the camera
+	VideoWriter writer;							// Writes the frames into videos (or images)
 
-	CascadeClassifier _cascadeClassifier;
-	CascadeClassifier _cascadeMouthClassifier;
+	Mat imageOrig;								// Image that stores the last webcam image
 
-	int imAddress = 0;
-	string imNameOrig = "Image";
+	// Classifiers
+	CascadeClassifier _cascadeFaceClassifier;	// Detects faces
+	CascadeClassifier _cascadeMouthClassifier;	// Detects mouths
 
-	int imSize = 400;
+	int imAddress = 0;							// Indicates the address of the image (0 for webcam)
 
-	// A queue containing the status of the mouth (W/H) during the frames. Useful to generate opened and closed mouth event
+	string imNameOrig = "Image";				// Name of the window to show the images (ignored since we show the image into a unity scene)
+	int imSize = 400;							// Dimension of the window to show the images (used to redimension the image, in order to reduce the size of the image and increase preformance)
+	string projPath = "C:\\Users\\Edwyn Luis\\Documents\\Lyon\\gamagora\\vision\\";	// Path to the project [Change your path]
+
+	Vector2 mouthRelativePos;					// As the mouth detector does not detect the mouth every frame, we store the last position of the mouth, in order to use it when the mouth is not detected; The relative position to the face is used to profit of face recognition
+
+	// A queue containing the status of the mouth during the frames. Useful to generate opened and closed mouth event
 	/*
-	 * An event of opened or closed mouth is obtained when the queue has a certain number of increasing (closed) or decreasing (opened) values.
-	 * The queue stores only elements that are all increasing or all decreasing.
+	 * An event of opened or closed mouth is obtained when the queue has a certain number of Closed or Opened values.
+	 * The queue stores only elements that are all Closed or Opened mouth.
 	 * The queue is cleared when a value is not according to the inserted elements.
 	*/
-	int queueEventTriggerAmount = 3;		// amount of values needed to trigger an event
-	Queue<bool> closedQueue;				// a queue containing the last status
-//	bool queueStatusIncreasing = false;		// flag that indicates if the queue has increasing values
+	int queueEventTriggerAmount = 2;		// amount of values needed to trigger an event
+	Queue<bool> closedQueue;				// a queue containing the last status (true: closed; false: opened)
 
 	// Use this for initialization
 	void Start () {
+		// Camera
 		webCam = new VideoCapture(imAddress);
+		// Frame handling function
 		webCam.ImageGrabbed += new System.EventHandler(GrabWebCam);
+		// Initializing writer : file destination
+		//writer = new VideoWriter(projPath+"result.avi", VideoWriter.Fourcc('M','P','4','2'), 20, new Size(webCam.Width, webCam.Height), true);
+
+		// Initializing image
 		imageOrig = new Mat();
 
-		_cascadeClassifier = new CascadeClassifier( "C:\\Users\\Edwyn Luis\\Documents\\Lyon\\gamagora\\vision\\vision\\Assets\\Resources\\haarcascade_frontalface_alt.xml");
-		_cascadeMouthClassifier = new CascadeClassifier( "C:\\Users\\Edwyn Luis\\Documents\\Lyon\\gamagora\\vision\\vision\\Assets\\Resources\\haarcascade_mcs_mouth.xml");
+		// Initializing Classifiers
+			// Face
+		_cascadeFaceClassifier = new CascadeClassifier( Application.dataPath+"\\Resources\\haarcascade_frontalface_alt.xml");
+			// Mouth
+		_cascadeMouthClassifier = new CascadeClassifier( Application.dataPath+"\\Resources\\haarcascade_mcs_mouth.xml");
 
-		writer = new VideoWriter("C:\\Users\\Edwyn Luis\\Documents\\Lyon\\gamagora\\vision\\result.avi", VideoWriter.Fourcc('M','P','4','2'), 20, new Size(webCam.Width, webCam.Height), true);
-
+		// Initializing Auxiliar variables
 		closedQueue = new Queue<bool>();
+		mouthRelativePos = new Vector2();
 	}
 	
 	// Update is called once per frame
@@ -78,14 +91,19 @@ public class FaceController : MonoBehaviour {
 			if( imageGray == null || imageGray.IsEmpty ){ return; }
 
 			Rectangle[] faces = new Rectangle[1];
-			if( _cascadeClassifier != null ){
+			Rectangle selectedFace = Rectangle.Empty;
+
+			if( _cascadeFaceClassifier != null ){
 				Image<Bgr,System.Byte> imageFrame = imageOrig.ToImage<Bgr,System.Byte>();
 				int MinFaceSize = 50;
 				int MaxFaceSize = 200;
-				faces = _cascadeClassifier.DetectMultiScale(imageFrame, 1.1, 10, new Size( MinFaceSize, MinFaceSize ), new Size( MaxFaceSize, MaxFaceSize )); //the actual face detection happens here
+				faces = _cascadeFaceClassifier.DetectMultiScale(imageFrame, 1.1, 10, new Size( MinFaceSize, MinFaceSize ), new Size( MaxFaceSize, MaxFaceSize )); //the actual face detection happens here
 				foreach (var face in faces)
 				{
 					imageFrame.Draw(face, new Bgr(System.Drawing.Color.BurlyWood), 3); //the detected face(s) is highlighted here using a box that is drawn around it/them
+				}
+				if( faces.Length > 0 ){
+					selectedFace = faces[0];
 				}
 				imageOrig = imageFrame.Mat;
 			}
@@ -98,22 +116,29 @@ public class FaceController : MonoBehaviour {
 				Rectangle[] mouths = _cascadeMouthClassifier.DetectMultiScale(imageFrame, 1.1, 10, new Size( MinFaceSize, MinFaceSize ), new Size( MaxFaceSize, MaxFaceSize )); //the actual face detection happens here
 
 				Rectangle selectedMouth = Rectangle.Empty;
-					
-				foreach (var mouth in mouths)
-				{
-					float mouthCenterY = mouth.Top + mouth.Height/2f;
-					float mouthArea = mouth.Height * mouth.Width;
-					foreach( Rectangle face in faces ){
-						if( mouthCenterY > face.Top && mouthCenterY < face.Bottom && mouthCenterY > face.Top + 2*face.Height/3f ){
-							// Mouth Detected
-							if (selectedMouth.IsEmpty || selectedMouth.Height*selectedMouth.Width < mouthArea){
-								// Choose mouth
-								selectedMouth = mouth;
+
+				if( mouths.Length > 0 ){
+					selectedMouth = mouths[0];
+					foreach (var mouth in mouths)
+					{
+						float mouthCenterY = mouth.Top + mouth.Height/2f;
+						float mouthArea = mouth.Height * mouth.Width;
+						if( !selectedFace.IsEmpty ){
+							if( mouthCenterY > selectedFace.Top && mouthCenterY < selectedFace.Bottom && mouthCenterY > selectedFace.Top + 2*selectedFace.Height/3f ){
+								// Mouth Detected
+								if (selectedMouth.IsEmpty || selectedMouth.Height*selectedMouth.Width < mouthArea){
+									// Choose mouth
+									selectedMouth = mouth;
+								}
 							}
 						}
 					}
 				}
 				if( selectedMouth != null && !selectedMouth.IsEmpty ){
+
+					if( selectedFace != null ){
+						mouthRelativePos.Set( (selectedMouth.Left + selectedMouth.Width/2f)-selectedFace.Left, (selectedMouth.Top + selectedMouth.Height/2f)-selectedFace.Top );
+					}
 
 					Mat mouthImage = new Mat( imageOrig, selectedMouth );
 					Mat mouthImageBW = new Mat();
@@ -157,16 +182,16 @@ public class FaceController : MonoBehaviour {
 
 					// Check Contours Ratio (Width x Height) to determines if the mouth is opened or closed
 
-//					imageFrame.Draw(selectedMouth, new Bgr(System.Drawing.Color.Red), 3); //the detected face(s) is highlighted here using a box that is drawn around it/them
+					imageFrame.Draw(selectedMouth, new Bgr(System.Drawing.Color.Aqua), 3); //the detected face(s) is highlighted here using a box that is drawn around it/them
 				}
-//				imageOrig = imageFrame.Mat;
+				imageOrig = imageFrame.Mat;
 			}
 
-			CvInvoke.Imshow(imNameOrig, imageOrig);
+			//CvInvoke.Imshow(imNameOrig, imageOrig);
 			if( texture != null ) texture.texture = toTexture( imageOrig );
 
 			// Storing
-			writer.Write(imageOrig);
+			//writer.Write(imageOrig);
 		}
 		else
 		{
